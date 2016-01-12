@@ -1405,12 +1405,12 @@ dowrite(unsigned offset, unsigned size)
 		       (debug &&
 		       (monitorstart == -1 ||
 			(offset + size > monitorstart &&
-			(monitorend == -1 || offset <= monitorend))))))
+			 (monitorend == -1 || (long)offset <= monitorend))))))
 		prt("%lu write\t0x%x thru\t0x%x\t(0x%x bytes)\n", testcalls,
 		    offset, offset + size - 1, size);
 
 	ret = ops->write(&ctx, offset, size, good_buf + offset);
-	if (ret != size) {
+	if (ret != (ssize_t)size) {
 		if (ret < 0)
 			prterrcode("dowrite: ops->write", ret);
 		else
@@ -1450,7 +1450,7 @@ dotruncate(unsigned size)
 
 	if ((progressinterval && testcalls % progressinterval == 0) ||
 	    (debug && (monitorstart == -1 || monitorend == -1 ||
-		      size <= monitorend)))
+		       (long)size <= monitorend)))
 		prt("%lu trunc\tfrom 0x%x to 0x%x\n", testcalls, oldsize, size);
 
 	ret = ops->resize(&ctx, size);
@@ -1493,7 +1493,7 @@ do_punch_hole(unsigned offset, unsigned length)
 
 	if ((progressinterval && testcalls % progressinterval == 0) ||
 	    (debug && (monitorstart == -1 || monitorend == -1 ||
-		      end_offset <= monitorend))) {
+		       (long)end_offset <= monitorend))) {
 		prt("%lu punch\tfrom 0x%x to 0x%x, (0x%x bytes)\n", testcalls,
 			offset, offset+length, length);
 	}
