@@ -687,7 +687,8 @@ void OSDService::update_osd_stat(vector<int>& hb_peers)
   check_nearfull_warning(osd_stat);
 
   osd->op_tracker.get_age_ms_histogram(&osd_stat.op_queue_age_hist);
-
+  RWLock::RLocker l(osd->pg_map_lock);
+  osd_stat.pg_sum = osd->pg_map.size(); 
   dout(20) << "update_osd_stat " << osd_stat << dendl;
 }
 

@@ -819,13 +819,13 @@ struct osd_stat_t {
   int64_t kb, kb_used, kb_avail;
   vector<int> hb_in, hb_out;
   int32_t snap_trim_queue_len, num_snap_trimming;
-
+  int32_t pg_sum;
   pow2_hist_t op_queue_age_hist;
 
   objectstore_perf_stat_t fs_perf_stat;
 
   osd_stat_t() : kb(0), kb_used(0), kb_avail(0),
-		 snap_trim_queue_len(0), num_snap_trimming(0) {}
+		 snap_trim_queue_len(0), num_snap_trimming(0), pg_sum(0){}
 
   void add(const osd_stat_t& o) {
     kb += o.kb;
@@ -862,7 +862,7 @@ inline bool operator==(const osd_stat_t& l, const osd_stat_t& r) {
     l.hb_in == r.hb_in &&
     l.hb_out == r.hb_out &&
     l.op_queue_age_hist == r.op_queue_age_hist &&
-    l.fs_perf_stat == r.fs_perf_stat;
+    l.fs_perf_stat == r.fs_perf_stat && l.pg_sum == r.pg_sum;
 }
 inline bool operator!=(const osd_stat_t& l, const osd_stat_t& r) {
   return !(l == r);
