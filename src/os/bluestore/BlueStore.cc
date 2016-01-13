@@ -346,18 +346,18 @@ static int get_key_object(const string& key, ghobject_t *oid)
   const char *p = key.c_str();
 
   p = _key_decode_shard(p, &oid->shard_id);
-  if (!p)
+  if (!*p)
     return -2;
 
   uint64_t pool;
   p = _key_decode_u64(p, &pool);
-  if (!p)
+  if (!*p)
     return -3;
-  oid->hobj.pool = pool - 0x8000000000000000;
+  oid->hobj.pool = pool - 0x8000000000000000ull;
 
   unsigned hash;
   p = _key_decode_u32(p, &hash);
-  if (!p)
+  if (!*p)
     return -4;
   oid->hobj.set_bitwise_key_u32(hash);
   if (*p != '.')
@@ -374,7 +374,7 @@ static int get_key_object(const string& key, ghobject_t *oid)
     ++p;
     r = decode_escaped(p, &oid->hobj.oid.name);
     if (r < 0)
-      return -8;
+      return -7;
     p += r + 1;
   } else if (*p == '<' || *p == '>') {
     // key + name
@@ -391,15 +391,19 @@ static int get_key_object(const string& key, ghobject_t *oid)
     oid->hobj.set_key(okey);
   } else {
     // malformed
-    return -7;
+    return -10;
   }
 
   p = _key_decode_u64(p, &oid->hobj.snap.val);
-  if (!p)
-    return -10;
-  p = _key_decode_u64(p, &oid->generation);
-  if (!p)
+  if (!*p)
     return -11;
+  p = _key_decode_u64(p, &oid->generation);
+  if (*p) {
+    // if we get something other than a null terminator here, 
+    // something goes wrong.
+    return -12;
+  }  
+
   return 0;
 }
 
@@ -874,18 +878,19 @@ int BlueStore::_read_bdev_label(string path, bluestore_bdev_label_t *label)
   dout(10) << __func__ << dendl;
   int fd = ::open(path.c_str(), O_RDONLY);
   if (fd < 0) {
-    fd = errno;
+    fd = -errno;
     derr << __func__ << " failed to open " << path << ": " << cpp_strerror(fd)
 	 << dendl;
     return fd;
   }
   bufferlist bl;
   int r = bl.read_fd(fd, BDEV_LABEL_BLOCK_SIZE);
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
   if (r < 0) {
     derr << __func__ << " failed to read from " << path
 	 << ": " << cpp_strerror(r) << dendl;
+    return r;
   }
-  VOID_TEMP_FAILURE_RETRY(::close(fd));
 
   uint32_t crc, expected_crc;
   bufferlist::iterator p = bl.begin();
@@ -1056,6 +1061,7 @@ int BlueStore::_write_fsid()
   }
   r = ::fsync(fsid_fd);
   if (r < 0) {
+    r = -errno;
     derr << __func__ << " fsid fsync failed: " << cpp_strerror(r) << dendl;
     return r;
   }
@@ -1163,11 +1169,19 @@ int BlueStore::_open_db(bool create)
 
     snprintf(bfn, sizeof(bfn), "%s/block.db", path.c_str());
     if (::stat(bfn, &st) == 0) {
-      bluefs->add_block_device(id, bfn);
-      int r = _check_or_set_bdev_label(bfn, bluefs->get_block_device_size(id),
-				       "bluefs db", create);
-      if (r < 0)
-	return r;
+      r = bluefs->add_block_device(id, bfn);
+      if (r < 0) {
+        derr << __func__ << " add block device(" << bfn << ") returned: " 
+             << cpp_strerror(r) << dendl;
+        goto free_bluefs;
+      }
+      r = _check_or_set_bdev_label(bfn, bluefs->get_block_device_size(id),
+        "bluefs db", create);
+      if (r < 0) {
+        derr << __func__ << " check block device(" << bfn << ") label returned: " 
+             << cpp_strerror(r) << dendl;
+        goto free_bluefs;
+      }
       if (create) {
 	bluefs->add_block_extent(
 	  id, BLUEFS_START,
@@ -1177,7 +1191,12 @@ int BlueStore::_open_db(bool create)
     }
 
     snprintf(bfn, sizeof(bfn), "%s/block", path.c_str());
-    bluefs->add_block_device(id, bfn);
+    r = bluefs->add_block_device(id, bfn);
+    if (r < 0) {
+      derr << __func__ << " add block device(" << bfn << ") returned: " 
+           << cpp_strerror(r) << dendl;
+      goto free_bluefs;
+    }
     if (create) {
       // note: we might waste a 4k block here if block.db is used, but it's
       // simpler.
@@ -1203,11 +1222,19 @@ int BlueStore::_open_db(bool create)
 
     snprintf(bfn, sizeof(bfn), "%s/block.wal", path.c_str());
     if (::stat(bfn, &st) == 0) {
-      bluefs->add_block_device(id, bfn);
-      int r = _check_or_set_bdev_label(bfn, bluefs->get_block_device_size(id),
-				       "bluefs wal", create);
-      if (r < 0)
-	return r;
+      r = bluefs->add_block_device(id, bfn);
+      if (r < 0) {
+        derr << __func__ << " add block device(" << bfn << ") returned: " 
+	     << cpp_strerror(r) << dendl;
+        goto free_bluefs;			
+      }
+      r = _check_or_set_bdev_label(bfn, bluefs->get_block_device_size(id),
+        "bluefs wal", create);
+      if (r < 0) {
+        derr << __func__ << " check block device(" << bfn << ") label returned: " 
+	     << cpp_strerror(r) << dendl;
+        goto free_bluefs;
+      }
       if (create) {
 	bluefs->add_block_extent(
 	  id, BDEV_LABEL_BLOCK_SIZE,
@@ -1224,8 +1251,7 @@ int BlueStore::_open_db(bool create)
     int r = bluefs->mount();
     if (r < 0) {
       derr << __func__ << " failed bluefs mount: " << cpp_strerror(r) << dendl;
-      delete bluefs;
-      return r;
+      goto free_bluefs;
     }
     if (g_conf->bluestore_bluefs_env_mirror) {
       rocksdb::Env *a = new BlueRocksEnv(bluefs);
@@ -1283,10 +1309,14 @@ int BlueStore::_open_db(bool create)
 			  static_cast<void*>(env));
   if (!db) {
     derr << __func__ << " error creating db" << dendl;
-    bluefs->umount();
-    delete bluefs;
-    delete db;
-    db = NULL;
+    if (bluefs) {
+      bluefs->umount();
+      delete bluefs;
+      bluefs = NULL;
+    }
+    // delete env manually here since we can't depend on db to do this under this case
+    delete env;
+    env = NULL;
     return -EIO;
   }
   string options;
@@ -1300,8 +1330,11 @@ int BlueStore::_open_db(bool create)
     r = db->open(err);
   if (r) {
     derr << __func__ << " erroring opening db: " << err.str() << dendl;
-    bluefs->umount();
-    delete bluefs;
+    if (bluefs) {
+      bluefs->umount();
+      delete bluefs;
+      bluefs = NULL;
+    }
     delete db;
     db = NULL;
     return -EIO;
@@ -1309,6 +1342,12 @@ int BlueStore::_open_db(bool create)
   dout(1) << __func__ << " opened " << kv_backend
 	  << " path " << fn << " options " << options << dendl;
   return 0;
+
+free_bluefs:
+  assert(bluefs);
+  delete bluefs;
+  bluefs = NULL;
+  return r;
 }
 
 void BlueStore::_close_db()
@@ -1509,7 +1548,7 @@ int BlueStore::_setup_block_symlink_or_file(
       int fd = ::openat(path_fd, name.c_str(), O_CREAT|O_RDWR, 0644);
       if (fd < 0) {
 	int r = -errno;
-	derr << __func__ << " faile to create " << name << " file: "
+	derr << __func__ << " failed to create " << name << " file: "
 	     << cpp_strerror(r) << dendl;
 	return r;
       }
@@ -1518,7 +1557,11 @@ int BlueStore::_setup_block_symlink_or_file(
       dout(1) << __func__ << " created " << name << " file with size "
 	      << pretty_si_t(size) << "B" << dendl;
       VOID_TEMP_FAILURE_RETRY(::close(fd));
-    }
+    } else if (r < 0) {
+      derr << __func__ << " failed to stat " << name << " file: "
+           << cpp_strerror(r) << dendl;
+      return r;
+    } 
   }
   return 0;
 }
@@ -1713,7 +1756,7 @@ int BlueStore::mount()
   if (bluefs) {
     r = _reconcile_bluefs_freespace();
     if (r < 0)
-      goto out_alloc;
+      goto out_coll;
   }
 
   finisher.start();
@@ -1732,6 +1775,8 @@ int BlueStore::mount()
   wal_tp.stop();
   finisher.wait_for_empty();
   finisher.stop();
+out_coll:
+  coll_map.clear();
  out_alloc:
   _close_alloc();
  out_db:
@@ -1866,8 +1911,10 @@ int BlueStore::fsck()
   if (bluefs) {
     used_blocks.insert(bluefs_extents);
     r = bluefs->fsck();
-    if (r < 0)
+    if (r < 0) {
+      coll_map.clear();
       goto out_alloc;
+    }
     if (r > 0)
       errors += r;
   }
@@ -2162,6 +2209,10 @@ int BlueStore::fsck()
   _close_fsid();
  out_path:
   _close_path();
+
+  // fatal errors take precedence
+  if (r < 0)
+    return r;
 
   dout(1) << __func__ << " finish with " << errors << " errors" << dendl;
   return errors;
@@ -5486,7 +5537,7 @@ int BlueStore::_truncate(TransContext *txc,
 
   RWLock::WLocker l(c->lock);
   OnodeRef o = c->get_onode(oid, false);
-  if (!o->exists) {
+  if (!o || !o->exists) {
     r = -ENOENT;
     goto out;
   }
@@ -5770,10 +5821,6 @@ int BlueStore::_omap_rmkeys(TransContext *txc,
   if (!o->onode.omap_head) {
     r = 0;
     goto out;
-  }
-  if (!o->onode.omap_head) {
-    o->onode.omap_head = o->onode.nid;
-    txc->write_onode(o);
   }
   ::decode(num, p);
   while (num--) {
@@ -6085,7 +6132,6 @@ int BlueStore::_remove_collection(TransContext *txc, coll_t cid,
 {
   dout(15) << __func__ << " " << cid << dendl;
   int r;
-  bufferlist empty;
 
   {
     RWLock::WLocker l(coll_lock);
