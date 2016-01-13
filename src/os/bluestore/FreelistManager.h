@@ -29,6 +29,7 @@ public:
   void shutdown();
 
   void dump();
+  void _dump();
 
   uint64_t get_total_free() {
     Mutex::Locker l(lock);
