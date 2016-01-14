@@ -338,7 +338,6 @@ void osd_stat_t::dump(Formatter *f) const
   f->close_section();
   f->dump_int("snap_trim_queue_len", snap_trim_queue_len);
   f->dump_int("num_snap_trimming", num_snap_trimming);
-  f->dump_int("pg_sum", pg_sum);
   f->open_object_section("op_queue_age_hist");
   op_queue_age_hist.dump(f);
   f->close_section();
@@ -357,7 +356,6 @@ void osd_stat_t::encode(bufferlist &bl) const
   ::encode(num_snap_trimming, bl);
   ::encode(hb_in, bl);
   ::encode(hb_out, bl);
-  ::encode(pg_sum, bl);
   ::encode(op_queue_age_hist, bl);
   ::encode(fs_perf_stat, bl);
   ENCODE_FINISH(bl);
@@ -373,7 +371,6 @@ void osd_stat_t::decode(bufferlist::iterator &bl)
   ::decode(num_snap_trimming, bl);
   ::decode(hb_in, bl);
   ::decode(hb_out, bl);
-  ::decode(pg_sum, bl);
   if (struct_v >= 3)
     ::decode(op_queue_age_hist, bl);
   if (struct_v >= 4)
@@ -389,7 +386,6 @@ void osd_stat_t::generate_test_instances(std::list<osd_stat_t*>& o)
   o.back()->kb = 1;
   o.back()->kb_used = 2;
   o.back()->kb_avail = 3;
-  o.back()->pg_sum = 100;
   o.back()->hb_in.push_back(5);
   o.back()->hb_in.push_back(6);
   o.back()->hb_out = o.back()->hb_in;
