@@ -7649,7 +7649,7 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
   dout(20) << __func__ << " new_snapset " << tctx->new_snapset << dendl;
 
   // take RWWRITE lock for duration of our local write.  ignore starvation.
-  if (tctx->lock_manager.take_write_lock(
+  if (!tctx->lock_manager.take_write_lock(
 	obc->obs.oi.soid,
 	obc)) {
     assert(0 == "problem!");
