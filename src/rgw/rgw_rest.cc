@@ -615,8 +615,8 @@ void end_header(struct req_state *s, RGWOp *op, const char *content_type, const 
       s->formatter->dump_string("Code", s->err.s3_code);
     if (!s->err.message.empty())
       s->formatter->dump_string("Message", s->err.message);
-    if (!s->bucket_name_str.empty()) // TODO: connect to expose_bucket
-      s->formatter->dump_string("BucketName", s->bucket_name_str);
+    if (!s->bucket_name.empty()) // TODO: connect to expose_bucket
+      s->formatter->dump_string("BucketName", s->bucket_name);
     if (!s->trans_id.empty()) // TODO: connect to expose_bucket or another toggle
       s->formatter->dump_string("RequestId", s->trans_id);
     s->formatter->dump_string("HostId", "FIXME-TODO-How-does-amazon-generate-HostId"); // TODO, FIXME

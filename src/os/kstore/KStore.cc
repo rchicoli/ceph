@@ -25,7 +25,7 @@
 #include "include/stringify.h"
 #include "common/errno.h"
 #include "common/safe_io.h"
-#include "common/JSONFormatter.h"
+#include "common/Formatter.h"
 
 
 #define dout_subsys ceph_subsys_kstore

@@ -18,7 +18,6 @@
 
 #include "assert.h"
 #include "Formatter.h"
-#include "XMLFormatter.h"
 #include "common/escape.h"
 
 #include <iostream>
